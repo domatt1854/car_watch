@@ -10,7 +10,7 @@ import aiohttp
 from typing import Union
 import re
 
-import nest_asyncio
+
 import random
 
 class CarScraper:
@@ -202,7 +202,7 @@ class CarScraper:
 
         
 
-async def main():
+async def main(make: str):
 
     cs = CarScraper()
 
@@ -213,7 +213,6 @@ async def main():
 
     await get_ua_task
 
-    make = "mercedes_benz"
 
 
     get_number_results_soup = asyncio.create_task(
@@ -232,12 +231,8 @@ async def main():
 
         num_results = int(cs.number_results[make] / 100)
 
-        if cs.number_results[make] % 100 != 0:
-            num_results += 1
-
-
         
-        for i in range(1, num_results):
+        for i in range(1, num_results + 2):
 
             url = 'https://www.cars.com/shopping/results/?page={}&page_size=100&list_price_max=&makes[]={}&maximum_distance=all&models[]=&stock_type=cpo&zip='.format(i, make)
 
@@ -248,6 +243,8 @@ async def main():
             )
 
         pages_content = await asyncio.gather(*tasks)
+        
+        pages_content = [i for i in pages_content if i is not None]
         
         process_html_tasks = []
 
@@ -265,8 +262,40 @@ async def main():
 
     print(df.head())
 
-    df.to_csv('cars.csv')
+    df.to_csv('data/{}.csv'.format(make))
 
+
+makes = [
+    "acura",
+    "buick",
+    "cadillac",
+    "chevrolet",
+    "chrysler",
+    "gmc",
+    "ford",
+    "honda",
+    "infiniti",
+    "jeep",
+    "kia",
+    "mitsubishi",
+    "nissan",
+    "porsche",
+    "ram",
+    "subaru",
+    "toyota",
+    "volkswagen",
+    "volvo",
+    "alfa_romeo",
+    "rolls_royce",
+    "mini",
+    "fiat",
+    "aston_martin",
+    "maserati"
+    "bmw",
+    "mercedes_benz"
+]
 
 asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-asyncio.run(main())
+
+for i in makes:
+    asyncio.run(main(i))
