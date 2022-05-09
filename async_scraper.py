@@ -2,16 +2,10 @@ import asyncio
 from bs4 import BeautifulSoup
 import requests
 import pandas as pd
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
 import aiohttp
-
-from typing import Union
 import re
-
-
 import random
+
 
 class CarScraper:
 
@@ -26,7 +20,7 @@ class CarScraper:
 
     async def get_user_agents(self):
 
-        with open('data/useragents.txt', 'r') as f:
+        with open('useragents.txt', 'r') as f:
             lines = f.readlines()
 
         for line in lines:
@@ -59,16 +53,6 @@ class CarScraper:
 
         website = 'https://www.cars.com/shopping/results/?page={}&page_size=100&list_price_max=&makes[]={}&maximum_distance=all&models[]=&stock_type=cpo&zip='.format("1", make)
         headers = {'User-Agent' : self.ua[random.randint(0,len(self.ua))]}
-
-        # rand_proxy = self.proxies[random.randint(0, len(self.proxies))]
-
-        # http_proxy = "http://{}".format(rand_proxy)
-        # https_proxy = "https://{}".format(rand_proxy)
-        
-        # proxy_dict = {
-        # "http": rand_proxy,
-        # "https": rand_proxy
-        
 
 
 
@@ -190,7 +174,7 @@ class CarScraper:
                         'Mileage': res_mileage,
                         'Dealer Name': res_dealer,
                         'Rating': res_rating,
-                        'Rating Count': res_rating,
+                        'Rating Count': res_rating_cnt,
                         'Price': res_price
                 }
 
@@ -290,7 +274,7 @@ makes = [
     "mini",
     "fiat",
     "aston_martin",
-    "maserati"
+    "maserati",
     "bmw",
     "mercedes_benz"
 ]
@@ -299,3 +283,5 @@ asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 for i in makes:
     asyncio.run(main(i))
+    
+
