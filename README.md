@@ -1,5 +1,6 @@
 # car_scraper
 
+![alt text](data/pipeline_image.png)
 
 ## Installing dependencies
 This code allows you to quickly scrape all available car data on cars.com. Before running this code, run 
