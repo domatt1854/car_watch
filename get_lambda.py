@@ -2,6 +2,7 @@ import json
 import psycopg2
 from datetime import date
 import re
+from os import environ
 
 def capitalize(dealership):
     
@@ -84,16 +85,3 @@ def lambda_handler(event, context):
 
     return response
 
-print(lambda_handler({'queryStringParameters': {'make': 'acura'}}, ""))
-
-# cur.execute(
-#      """SELECT COUNT(*) FROM cars_new
-#         WHERE make = '{}' AND
-#         date = (SELECT MAX(date) from cars_new);""".format(make)
-# )
-
-# conn.commit()
-
-# results = cur.fetchall()
-
-# print(results)
