@@ -63,3 +63,35 @@ Similar to deploying **update_extract.py**. You can zip together the psycopg2 an
 Then, set up an API Gateway to trigger tha lambda function. Pass in "make" as a parameter and a JSON response of the newest car listings will be available. 
 
 You can test out my API here: `https://ios4w4z8wc.execute-api.us-west-1.amazonaws.com/test/car_data_scraper/?make={insert make of car here}`
+
+Suppported makes:
+
+```
+acura
+buick
+cadillac
+chevrolet
+chrysler
+gmc
+ford
+honda
+infiniti
+jeep
+kia
+mitsubishi
+nissan
+porsche
+ram
+subaru
+toyota
+volkswagen
+volvo
+alfa_romeo
+rolls_royce
+mini
+fiat
+aston_martin
+maserati
+bmw
+mercedes_benz
+```
