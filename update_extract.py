@@ -4,6 +4,8 @@ import psycopg2
 from bs4 import BeautifulSoup
 import requests
 from os import environ
+from datetime import date
+
 
 def extract_year(name):
     return int(re.search(r"(\d{4})", name).group(1))
@@ -138,7 +140,6 @@ def process_text(response_text: str):
 
             data_dict.append(car_dict)
             
-            print(car_dict['Model'])
 
         except Exception as e:
             print(e)
@@ -154,8 +155,7 @@ def fetch(url):
     
 
     return response.text
-
-
+    
 makes = [
     "acura",
     "buick",
@@ -188,10 +188,10 @@ makes = [
 
 
 
-
-
 def lambda_handler(event, context):
-    
+        
+
+    print("Connecting to database")
 
     conn = psycopg2.connect(
         host = environ.get("HOST"),
@@ -200,22 +200,37 @@ def lambda_handler(event, context):
         database = environ.get("DB"),
         port = environ.get("PORT")
     )
-    
-    cur = conn.cursor()
-    
-    cur.execute("SELECT * FROM cars")
-    results = cur.fetchall()
-    
-    
+
+    all_results = []
+
+    for make in makes:
+        
+        cur = conn.cursor()
+        
+        make_query = capitalize(make)
+        
+        cur.execute("""SELECT * FROM cars 
+                        WHERE make= '{}'
+                        ORDER BY ID DESC
+                        LIMIT 1000""".format(make_query))
+                        
+        results = cur.fetchall()
+        
+        all_results.extend(results)
+
+    print("{} results grabbed from query.".format(len(all_results)))
+
+
     df = pd.DataFrame(results)
     df.columns = ['ID', 'Model', 'Make',  'Mileage', 'Dealer Name', 'Rating', 'Rating Count', 'Price', 'Year']
 
-
-    
     for make in makes:
+        print("querying from url for make: {}".format(make))
+        
         url = 'https://www.cars.com/shopping/results/?page={}&page_size=100&list_price_max=&makes[]={}&maximum_distance=all&models[]=&stock_type=cpo&zip='.format('1', make)
         
         response_text = fetch(url)
+        print("Done querying. Now looking for duplicates...")
                 
         data_dict = process_text(response_text)
         
@@ -230,13 +245,11 @@ def lambda_handler(event, context):
         df_append['Make'] = capitalize(make)
         
         not_duplicates = []
+
+        df_make = df[df['Make'] == capitalize(make)]
         
         for i, row in df_append.iterrows():
-            
-            df_make = df[df['Make'] == capitalize(make)]
 
-
-        
             duplicate_index = df_make[(df_make['Model'] == row['Model'])&\
                                     (df_make['Mileage'] == row['Mileage'])&\
                                     (df_make['Year'] == row['Year'])].index.to_list()
@@ -247,26 +260,45 @@ def lambda_handler(event, context):
         
         df_not_duplicate = df_append[df_append.index.isin(not_duplicates)]
 
+        print("found {} new records".format(len(df_not_duplicate)))
         
         insert_script = "INSERT INTO cars (model, make, dealer_name, mileage, rating, rating_cnt, price, year) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+        insert_script_new = "INSERT INTO cars_new (date, model, make, dealer_name, mileage, rating, rating_cnt, price, year) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
         
         batch_insert = []
+        batch_insert_new = []
 
         for i, row in df_not_duplicate.iterrows():
             
             insert_value = (str(row['Model']), str(row['Make']), str(row['Dealer Name']), int(row['Mileage']), float(row['Rating']), int(row['Rating Count']), float(row['Price']), int(row['Year']))
             
-            batch_insert.append(insert_value)
+            insert_value_date = (
+                str(date.today().strftime("%m/%d/%Y")),
+                str(row['Model']),
+                str(row['Make']),
+                str(row['Dealer Name']),
+                int(row['Mileage']),
+                float(row['Rating']),
+                int(row['Rating Count']),
+                float(row['Price']),
+                int(row['Year'])
+        )
             
-            cur.executemany(
-                insert_script, batch_insert
-            ) 
+            batch_insert.append(insert_value)
+            batch_insert_new.append(insert_value_date)
+            
             
 
-        
-                
-            
-            
-            
-            
-            
+        cur.executemany(
+            insert_script, batch_insert
+        )
+
+
+        cur.executemany(
+            insert_script_new, batch_insert_new
+        )
+
+        print("finished inserting in the updated database for make: {}".format(make))
+        print("for date: {}".format(date.today().strftime("%m/%d/%Y")))
+
+    conn.commit()
