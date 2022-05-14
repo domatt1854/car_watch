@@ -221,7 +221,7 @@ def lambda_handler(event, context):
     print("{} results grabbed from query.".format(len(all_results)))
 
 
-    df = pd.DataFrame(results)
+    df = pd.DataFrame(all_results)
     df.columns = ['ID', 'Model', 'Make',  'Mileage', 'Dealer Name', 'Rating', 'Rating Count', 'Price', 'Year']
 
     for make in makes:
