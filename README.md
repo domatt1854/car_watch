@@ -1,4 +1,7 @@
-# car_scraper
+# Car Watch!
+
+Car Watch allows you to monitor the new listings on cars.com using RDS, Python, Lambda, and EventBridge.
+
 
 ![alt text](data/pipeline_image.png)
 
@@ -40,4 +43,16 @@ to aggregate and clean all of the scraped data. This script will also populate y
 
 ## **Updating the database with new records**
 
-Deploy **update_extract.py** on heroku, or any scheduling service to update the database with new records.
+To deploy **update_extract.py** on lambda. Move **update_extra.py** into its own separate folder. In the terminal, type 
+
+'''
+pip install -t . bs4 requests
+'''
+
+Zip together these files, and upload them to their own lambda function.
+
+In order to get pandas and numpy uploaded to Lambda. You must download the corresponding wheel files for your current python version.
+Then use the "wheel unpack" command on Linux to open the files. Then zip all of the produced folders and upload them as a layer to 
+lambda.
+
+You can also get the correct builds of psycopg2 using [this link](https://github.com/jkehler/awslambda-psycopg2)
