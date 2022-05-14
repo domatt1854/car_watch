@@ -45,9 +45,9 @@ to aggregate and clean all of the scraped data. This script will also populate y
 
 To deploy **update_extract.py** on lambda. Move **update_extra.py** into its own separate folder. In the terminal, type 
 
-'''
+```
 pip install -t . bs4 requests
-'''
+```
 
 Zip together these files, and upload them to their own lambda function.
 
