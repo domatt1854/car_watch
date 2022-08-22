@@ -1,41 +1,68 @@
 import pandas as pd
 import plotly.express as px  # (version 4.7.0 or higher)
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output  # pip install dash (version 2.0.0 or higher)
+from dash import Dash, dash_table, dcc, html, Input, Output  # pip install dash (version 2.0.0 or higher)
 import dash_bootstrap_components as dbc
+
 from os import listdir
+from datetime import timedelta, datetime
+
 import secret
 
 import requests
-import json
+import re
+
+def capitalize(dealership):
+    
+    dealership = re.sub("_", " ", dealership)
+    dealership = dealership.split(" ")
+    
+    dealership = [i.capitalize() for i in dealership]
+    
+    dealership = " ".join(dealership)
+    
+    return dealership
+
 
 external_stylesheets = ['https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css']
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 
-# pulling down latest listings
-data_all = []
-
-files = listdir('data')
-
-for i in files:
-
-    if 'png' in i or 'txt' in i:
-        continue
-    
-    file_path = "data/{}".format(i)
-    
-    df = pd.read_csv(file_path, on_bad_lines = 'skip')
-    df['Make'] = i[:-4]
-    df = df.drop(columns=["Unnamed: 0"])
-    
-    data_all.append(df)
-    
-df = pd.concat(data_all, axis = 0, ignore_index=True)
-
 server = app.server
 
+
 makes = [
+    "acura",
+    "buick",
+    "cadillac",
+    "chevrolet",
+    "chrysler",
+    "gmc",
+    "ford",
+    "honda",
+    "infiniti",
+    "jeep",
+    "kia",
+    "mitsubishi",
+    "nissan",
+    "porsche",
+    "ram",
+    "subaru",
+    "toyota",
+    "volkswagen",
+    "volvo",
+    "alfa_romeo",
+    "rolls_royce",
+    "mini",
+    "fiat",
+    "aston_martin",
+    "maserati",
+    "bmw",
+    "mercedes_benz"
+]
+
+
+capitalized_makes = [
     "Acura",
     "Buick",
     "Cadillac",
@@ -61,38 +88,133 @@ makes = [
     "Fiat",
     "Aston Martin",
     "Maserati",
-    "Vmw",
+    "BMW",
     "Mercedes Benz"
 ]
 
+
+make_dropdown_to_param = {k: v for k, v in zip(capitalized_makes, makes)}
+
+
+
 app.layout = html.Div([
-    html.H1('Car Watch! Used Car Trends'),
-    dcc.Dropdown(makes,
-        'Acura',
-        id='dropdown_make'
+    
+    html.H1(
+        'Car Watch! Used Car Trends', style= {'text-align': 'center'}
     ),
-    dcc.Dropdown(makes,
+    
+    dcc.Dropdown(
+        capitalized_makes,
         'Acura',
-        id='dropdown_date'
-    ),
-    html.Div(id='display-value')
+        id ='dropdown_make'),
+    html.Div(id='display-value'),
+    
+    dcc.Graph(id='listings_graph', figure={}),
+    html.Br(id='graph_border_1'),
+    
+    dbc.Container([
+        dbc.Label('Most Recent Listings:'),
+        dash_table.DataTable(
+            id='make_table',
+            columns=[
+                {"name": i, "id": i} for i in ['Name', 'Date', 'Price', 'Mileage']
+            ])
+    ])
+    
+    # dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns])
 ])
 
-@app.callback(Output('display-value', 'children'),
-                [Input('dropdown_make', 'value')])
+@app.callback(
+                Output('display-value', 'children'),
+                [Input('dropdown_make', 'value')]
+)
 def display_value(value):
     return f'You have selected {value}'
 
 
-def get_daily_make_listings(make, date):
-    
-    query_parameters = {"make":make,"date":date}
+@app.callback(
+    Output('listings_graph', 'figure'),
+    Input('dropdown_make', 'value')
+)
+def get_recent_week_listings(make: str):
+
+    # grabbing the lower case name of the make
+    # this is due to the fact of how the API works
+    # Ex: Mercedes Benz -> mercedez_benz   
+    make = make_dropdown_to_param[make]
+
     payload = ""
     headers = {"x-api-key": secret.API_KEY}
+    
+    
+    NUM_DAYS_IN_WEEK = 7
 
-    response = requests.request("GET", secret.API_URL, data=payload, headers=headers, params=query_parameters)    
+    # to hold the results of all queries of a particular make
+    global df
+    df = pd.DataFrame()
+    
+    
+    
+    for i in range(NUM_DAYS_IN_WEEK):
+        
+        day = (datetime.now() - timedelta(days=i)).date().isoformat()
+    
+        querystring = {"make":make,"date":day}
 
-    res = json.loads(response.text)
+        response = requests.request("GET", secret.API_URL, data=payload, headers=headers, params=querystring)
+
+        df_temp = pd.read_json(response.text)
+        df = pd.concat([df, df_temp])
+    
+    # Need to sort the year later in the Mileage x Price scatter plot
+    df['Date'] = pd.to_datetime(df['Date'])
+    df['Year'] = df['Year'].astype(str)
+
+
+    fig = px.scatter(
+                    df.sort_values(by='Year'),
+                    x = "Mileage",
+                    y = "Price",
+                    color = "Year",
+                    hover_data=["Name"],
+                    template='plotly_dark')
+
+
+    return fig
+
+@app.callback(
+    Output('make_table', 'data'),
+    Input('listings_graph', 'figure')
+)
+def create_table(figure):
+    
+    print('-----------')
+    print(df.head())
+    print('----------')
+    # colors = {
+    #     'background': '#000000',
+    #     'text': '#7FDBFF'
+    # }
+    
+    
+    # columns = ['Name', 'Year', 'Price', 'Mileage']
+
+    # fig = go.Figure(data = [go.Table(
+    #     header = dict(values=columns,
+    #             fill_color='#000000',
+    #             align = 'left'),
+    #     cells = dict(values = [df.Name, df.Year, df.Price, df.Mileage],
+    #                 fill_color = '#000000',
+    #                 align = 'left'))
+
+    # ])
+    
+    # fig.update_layout(template='plotly_dark', title = 'Listing Data For the Past Week')
+
+    # return fig
+    
+    return df.to_dict('records')
+
 
 if __name__ == '__main__':
     app.run_server(debug=True)
