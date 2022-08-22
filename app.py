@@ -1,7 +1,7 @@
 import pandas as pd
 import plotly.express as px  # (version 4.7.0 or higher)
 import plotly.graph_objects as go
-from dash import Dash, dcc, html, Input, Output  # pip install dash (version 2.0.0 or higher)
+from dash import Dash, dash_table, dcc, html, Input, Output  # pip install dash (version 2.0.0 or higher)
 import dash_bootstrap_components as dbc
 
 from os import listdir
@@ -23,12 +23,10 @@ def capitalize(dealership):
     
     return dealership
 
-df = pd.DataFrame()
 
 external_stylesheets = ['https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css']
 
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
-
 
 server = app.server
 
@@ -63,40 +61,41 @@ makes = [
     "mercedes_benz"
 ]
 
-capitalized_makes = [capitalize(i) for i in makes]
+
+capitalized_makes = [
+    "Acura",
+    "Buick",
+    "Cadillac",
+    "Chevrolet",
+    "Chrysler",
+    "GMC",
+    "Ford",
+    "Honda",
+    "Infiniti",
+    "Jeep",
+    "Kia",
+    "Mitsubishi",
+    "Nissan",
+    "Porsche",
+    "Ram",
+    "Subaru",
+    "Toyota",
+    "Volkswagen",
+    "Volvo",
+    "Alfa Romeo",
+    "Rolls Royce",
+    "Mini",
+    "Fiat",
+    "Aston Martin",
+    "Maserati",
+    "BMW",
+    "Mercedes Benz"
+]
+
 
 make_dropdown_to_param = {k: v for k, v in zip(capitalized_makes, makes)}
 
 
-# capitalized_makes = [
-#     "Acura",
-#     "Buick",
-#     "Cadillac",
-#     "Chevrolet",
-#     "Chrysler",
-#     "GMC",
-#     "Ford",
-#     "Honda",
-#     "Infiniti",
-#     "Jeep",
-#     "Kia",
-#     "Mitsubishi",
-#     "Nissan",
-#     "Porsche",
-#     "Ram",
-#     "Subaru",
-#     "Toyota",
-#     "Volkswagen",
-#     "Volvo",
-#     "Alfa Romeo",
-#     "Rolls Royce",
-#     "Mini",
-#     "Fiat",
-#     "Aston Martin",
-#     "Maserati",
-#     "Bmw",
-#     "Mercedes Benz"
-# ]
 
 app.layout = html.Div([
     
@@ -111,8 +110,18 @@ app.layout = html.Div([
     html.Div(id='display-value'),
     
     dcc.Graph(id='listings_graph', figure={}),
+    html.Br(id='graph_border_1'),
     
-    dcc.Graph(id='make_table', figure={})
+    dbc.Container([
+        dbc.Label('Most Recent Listings:'),
+        dash_table.DataTable(
+            id='make_table',
+            columns=[
+                {"name": i, "id": i} for i in ['Name', 'Date', 'Price', 'Mileage']
+            ])
+    ])
+    
+    # dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns])
 ])
 
 @app.callback(
@@ -141,7 +150,9 @@ def get_recent_week_listings(make: str):
     NUM_DAYS_IN_WEEK = 7
 
     # to hold the results of all queries of a particular make
+    global df
     df = pd.DataFrame()
+    
     
     
     for i in range(NUM_DAYS_IN_WEEK):
@@ -165,16 +176,44 @@ def get_recent_week_listings(make: str):
                     x = "Mileage",
                     y = "Price",
                     color = "Year",
-                    hover_data=["Name"])
+                    hover_data=["Name"],
+                    template='plotly_dark')
+
 
     return fig
 
-# @app.callback(
-#     Output('make_table', 'figure'),
-#     Input('listings_graph', 'figure')
-# )
-# def create_table():
+@app.callback(
+    Output('make_table', 'data'),
+    Input('listings_graph', 'figure')
+)
+def create_table(figure):
     
+    print('-----------')
+    print(df.head())
+    print('----------')
+    # colors = {
+    #     'background': '#000000',
+    #     'text': '#7FDBFF'
+    # }
+    
+    
+    # columns = ['Name', 'Year', 'Price', 'Mileage']
+
+    # fig = go.Figure(data = [go.Table(
+    #     header = dict(values=columns,
+    #             fill_color='#000000',
+    #             align = 'left'),
+    #     cells = dict(values = [df.Name, df.Year, df.Price, df.Mileage],
+    #                 fill_color = '#000000',
+    #                 align = 'left'))
+
+    # ])
+    
+    # fig.update_layout(template='plotly_dark', title = 'Listing Data For the Past Week')
+
+    # return fig
+    
+    return df.to_dict('records')
 
 
 if __name__ == '__main__':
