@@ -23,12 +23,10 @@ def capitalize(dealership):
     
     return dealership
 
-
-external_stylesheets = ['https://cdn.jsdelivr.net/gh/AnnMarieW/dash-bootstrap-templates/dbc.min.css']
-
 app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 
 server = app.server
+
 
 
 makes = [
@@ -95,21 +93,93 @@ capitalized_makes = [
 
 make_dropdown_to_param = {k: v for k, v in zip(capitalized_makes, makes)}
 
+PAGE_SIZE = 15
 
-
-app.layout = html.Div([
+app.layout = dbc.Container([
     
-    html.H1(
-        'Car Watch! Used Car Trends', style= {'text-align': 'center'}
+    # Top row of text, including title and quick summary of app
+    dbc.Row([
+        html.H1(
+            'Car Watch! Used Car Trends', style= {'text-align': 'center'}
+        ),
+        html.P(
+            'Car Watch is tracking thousands of used car listings weekly. Conveniently and easily explore which car models are being sold currently.',
+            style= {'text-align': 'center'}
+        )
+    ]),
+    
+    # This row includes the components that filter data, and a scatterplot of car listings
+    dbc.Row([
+        # Left Column, includes:
+            # Drop-down menu
+            # Filter search bar
+            # TODO:
+                # slider bar for price, mileage, and year
+        dbc.Col(
+            [
+                # Dropdown menu
+                dcc.Dropdown(
+                    capitalized_makes,
+                    'Acura',
+                    id = 'dropdown_make'),
+                html.Div(id= 'display-value'),
+                dcc.Input(
+                    id="filter_search", 
+                    type= 'text', 
+                    placeholder = 'Type to Search For a Model', 
+                    style={
+                        'marginTop':'5%',
+                        'marginBottom': '5%',
+                        'height': '10%',
+                        'width': '100%'
+                    }
+                ),
+                html.H5(
+                    'Adjust Price Range',
+                    style = {
+                        'text-align': 'center',
+                        'marginTop': '20%'
+                    }
+                ),
+                dcc.Slider(
+                    min = 0,
+                    max = 100000,
+                    step= 10000,
+                    value = 100000,
+                    id = 'price-slider'
+                ),
+                html.H5(
+                    'Adjust Mileage Range',
+                    style = {
+                        'text-align': 'center'
+                    }
+                ),
+                dcc.Slider(
+                    min = 0,
+                    max = 100000,
+                    step= 10000,
+                    value = 100000,
+                    id = 'mileage-slider'
+                )
+            ]
+        # width = 4,
+        # style={
+        #     'padding-bottom': '5%',
+        #     'padding-top': '5%'
+        # }
+        
+        ),
+        dbc.Col(
+            [
+                dcc.Graph(id='listings_graph', figure={})
+            ], width = 8
+        )
+    ]
     ),
     
-    dcc.Dropdown(
-        capitalized_makes,
-        'Acura',
-        id ='dropdown_make'),
-    html.Div(id='display-value'),
     
-    dcc.Graph(id='listings_graph', figure={}),
+    
+
     html.Br(id='graph_border_1'),
     
     dbc.Container([
@@ -118,7 +188,20 @@ app.layout = html.Div([
             id='make_table',
             columns=[
                 {"name": i, "id": i} for i in ['Name', 'Date', 'Price', 'Mileage']
-            ])
+            ],
+            page_current = 0,
+            page_size = PAGE_SIZE,
+            page_action='custom',
+            style_data={
+                'color': 'black',
+                'backgroundColor': 'white'
+            },
+            style_header={
+                'backgroundColor': 'rgb(210, 210, 210)',
+                'color': 'black',
+                'fontWeight': 'bold'
+            }
+            )
     ])
     
     # dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns])
@@ -167,8 +250,10 @@ def get_recent_week_listings(make: str):
         df = pd.concat([df, df_temp])
     
     # Need to sort the year later in the Mileage x Price scatter plot
-    df['Date'] = pd.to_datetime(df['Date'])
+    df['Date'] = pd.to_datetime(df['Date']).dt.date
     df['Year'] = df['Year'].astype(str)
+    
+    df = df.sort_values(by='Date')
 
 
     fig = px.scatter(
@@ -182,38 +267,31 @@ def get_recent_week_listings(make: str):
 
     return fig
 
+
+
+'''
+This method is triggered by these interactions:
+    - characters are typed into the search bar
+    - table is paginated
+    
+'''
 @app.callback(
     Output('make_table', 'data'),
-    Input('listings_graph', 'figure')
-)
-def create_table(figure):
+    Input('filter_search', 'value'),
+    Input('price-slider', 'value'),
+    Input('mileage-slider', 'value'),
+    Input('listings_graph', 'figure'),
+    Input('make_table', 'page_current'),
+    Input('make_table', 'page_size'))
+def update_table(search_term, price_slider_value, mileage_slider_value, figure, page_current, page_size):
     
-    print('-----------')
-    print(df.head())
-    print('----------')
-    # colors = {
-    #     'background': '#000000',
-    #     'text': '#7FDBFF'
-    # }
-    
-    
-    # columns = ['Name', 'Year', 'Price', 'Mileage']
+    if not search_term:
+        return df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records')
 
-    # fig = go.Figure(data = [go.Table(
-    #     header = dict(values=columns,
-    #             fill_color='#000000',
-    #             align = 'left'),
-    #     cells = dict(values = [df.Name, df.Year, df.Price, df.Mileage],
-    #                 fill_color = '#000000',
-    #                 align = 'left'))
-
-    # ])
-    
-    # fig.update_layout(template='plotly_dark', title = 'Listing Data For the Past Week')
-
-    # return fig
-    
-    return df.to_dict('records')
+    else:
+        return df[df['Name'].str.contains(search_term)] \
+        .iloc[page_current * page_size: (page_current + 1) * page_size] \
+        .to_dict('records')
 
 
 if __name__ == '__main__':
