@@ -1,58 +1,19 @@
+from turtle import width
 import pandas as pd
 import plotly.express as px  # (version 4.7.0 or higher)
 import plotly.graph_objects as go
 # pip install dash (version 2.0.0 or higher)
 from dash import Dash, dash_table, dcc, html, Input, Output
 import dash_bootstrap_components as dbc
-
-from os import listdir
 from datetime import timedelta, datetime
-
 import secret
-
 import requests
+import makes
 import re
 
-
-'''
-Connects with the API to pull down the most recent weekly listings
-'''
-
-
-def query_make(make):
-
-    payload = ""
-    headers = {"x-api-key": secret.API_KEY}
-
-    NUM_DAYS_IN_WEEK = 7
-
-    # to hold the results of all queries of a particular make
-    global df
-    
-    df = pd.DataFrame()
-
-    for i in range(NUM_DAYS_IN_WEEK):
-
-        day = (datetime.now() - timedelta(days=i)).date().isoformat()
-
-        querystring = {"make": make, "date": day}
-
-        response = requests.request(
-            "GET", secret.API_URL, data=payload, headers=headers, params=querystring)
-
-        df_temp = pd.read_json(response.text)
-        df = pd.concat([df, df_temp], ignore_index=True)
-
-    # Need to sort the year later in the Mileage x Price scatter plot
-    df['Date'] = pd.to_datetime(df['Date']).dt.date
-    df['Year'] = df['Year'].astype(str)
-
-    df.rename(columns={"Name": "Full Model Name"}, inplace=True)
-
-    df = df.sort_values(by='Date')
-
-    return df
-
+PAGE_SIZE = 14
+curr_make = ''
+df_makes_models = pd.read_csv('data/makes_models.csv')
 
 app = Dash(
     __name__,
@@ -60,77 +21,8 @@ app = Dash(
     external_stylesheets=[dbc.themes.CYBORG]
 )
 
-curr_make = ''
-
-
 server = app.server
 
-
-makes = [
-    "acura",
-    "buick",
-    "cadillac",
-    "chevrolet",
-    "chrysler",
-    "gmc",
-    "ford",
-    "honda",
-    "infiniti",
-    "jeep",
-    "kia",
-    "mitsubishi",
-    "nissan",
-    "porsche",
-    "ram",
-    "subaru",
-    "toyota",
-    "volkswagen",
-    "volvo",
-    "alfa_romeo",
-    "rolls_royce",
-    "mini",
-    "fiat",
-    "aston_martin",
-    "maserati",
-    "bmw",
-    "mercedes_benz"
-]
-
-
-capitalized_makes = [
-    "Acura",
-    "Buick",
-    "Cadillac",
-    "Chevrolet",
-    "Chrysler",
-    "GMC",
-    "Ford",
-    "Honda",
-    "Infiniti",
-    "Jeep",
-    "Kia",
-    "Mitsubishi",
-    "Nissan",
-    "Porsche",
-    "Ram",
-    "Subaru",
-    "Toyota",
-    "Volkswagen",
-    "Volvo",
-    "Alfa Romeo",
-    "Rolls Royce",
-    "Mini",
-    "Fiat",
-    "Aston Martin",
-    "Maserati",
-    "BMW",
-    "Mercedes Benz"
-]
-
-
-make_dropdown_to_param = {k: v for k, v in zip(capitalized_makes, makes)}
-
-PAGE_SIZE = 15
 
 app.layout = dbc.Container([
 
@@ -156,7 +48,7 @@ app.layout = dbc.Container([
                 [
                     # Dropdown menu
                     dcc.Dropdown(
-                        capitalized_makes,
+                        makes.DROP_DOWN_MENU_MAKES,
                         'Acura',
                         id='dropdown_make'),
                     html.Div(id='display-value'),
@@ -175,7 +67,7 @@ app.layout = dbc.Container([
                         'Adjust Price Range',
                         style={
                             'text-align': 'center',
-                            'marginTop': '17%'
+                            'marginTop': '10%'
                         }
                     ),
                     dcc.Slider(
@@ -218,30 +110,146 @@ app.layout = dbc.Container([
 
     html.Br(id='graph_border_1'),
 
-    dbc.Container([
-        dbc.Label('Most Recent Listings:'),
-        dash_table.DataTable(
-            id='make_table',
-            columns=[
-                {"name": i, "id": i} for i in ['Full Model Name', 'Date', 'Price', 'Mileage']
-            ],
-            page_current=0,
-            page_size=PAGE_SIZE,
-            page_action='custom',
-            style_data={
-                'color': 'black',
-                'backgroundColor': 'white'
-            },
-            style_header={
-                'backgroundColor': 'rgb(210, 210, 210)',
-                'color': 'black',
-                'fontWeight': 'bold'
+    dbc.Row([
+        dbc.Col(
+            [dbc.Label('Most Popular Car Models Listed for Sale'),
+             dcc.Graph(id='horizontal_bar_car_models', figure={})],
+            width = 6
+        ),
+        dbc.Col(
+            [dbc.Label('Most Recent Listings:'),
+            dash_table.DataTable(
+                id='make_table',
+                columns=[
+                    {"name": i, "id": i} for i in ['Full Model Name', 'Date', 'Price', 'Mileage']
+                ],
+                page_current=0,
+                page_size=PAGE_SIZE,
+                page_action='custom',
+                style_data={
+                    'color': 'black',
+                    'backgroundColor': 'white'
+                },
+                style_header={
+                    'backgroundColor': 'rgb(210, 210, 210)',
+                    'color': 'black',
+                    'fontWeight': 'bold'
+                }
+            )],
+            width=6,
+            style={
+                
             }
         )
     ])
 
     # dash_table.DataTable(df.to_dict('records'), [{"name": i, "id": i} for i in df.columns])
 ])
+
+def string_together_amg(name):
+    name = re.sub('Benz AMG', 'Benz-AMG', name)
+    return name
+
+def partial_match(name, models):
+
+    for i in models:
+        
+        lower = i.lower()
+        
+        # checking for substring matches
+        if lower in name.lower():
+            return i
+        
+        # matching BMW's
+        elif 'bmw' in lower:
+            res = re.search(r"(\d{3})", name)
+            if res:
+                return "{} Series".format(res.group(1)[0])
+    
+    return 'Other'
+
+            
+
+
+'''
+Connects with the API to pull down the most recent weekly listings.
+'''
+def query_make(make):
+    
+    global df
+    global df_makes_models
+
+    print("in query_makes")
+    
+    payload = ""
+    headers = {"x-api-key": secret.API_KEY}
+    NUM_DAYS_IN_WEEK = 7
+    
+
+    # to hold the results of all queries of a particular make
+    df = pd.DataFrame()
+    
+    print("getting unique filters")
+    print(makes.MAKES_DROPDOWN_TO_JOIN_KEY[make])
+    
+    filter_makes_models = df_makes_models[df_makes_models['Make'] == makes.MAKES_DROPDOWN_TO_JOIN_KEY[make]]['Model']
+    filter_makes_models = filter_makes_models.unique().tolist()
+    
+    print(filter_makes_models[0:5])
+    
+    if makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Ram':
+        filter_makes_models.extend(makes.RAM_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Rolls Royce':
+        filter_makes_models.extend(makes.ROLLS_ROYCE_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Aston Martin':
+        filter_makes_models.extend(makes.ASTON_MARTIN_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Nissan':
+        filter_makes_models.extend(makes.NISSAN_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Toyota':
+        filter_makes_models.extend(makes.TOYOTA_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Gmc':
+        filter_makes_models.extend(makes.GMC_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Chevrolet':
+        filter_makes_models.extend(makes.CHEVY_MODELS)
+        
+    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Ford':
+        filter_makes_models.extend(makes.FORD_MODELS)
+    
+
+    for i in range(NUM_DAYS_IN_WEEK):
+
+        day = (datetime.now() - timedelta(days=i)).date().isoformat()
+
+        querystring = {"make": make, "date": day}
+
+        response = requests.request(
+            "GET", secret.API_URL, data=payload, headers=headers, params=querystring)
+
+        df_temp = pd.read_json(response.text)
+        df = pd.concat([df, df_temp], ignore_index=True)
+
+    # Need to sort the year later in the Mileage x Price scatter plot
+    df['Date'] = pd.to_datetime(df['Date']).dt.date
+    df['Year'] = df['Year'].astype(str)
+
+    df.rename(columns={"Name": "Full Model Name"}, inplace=True)
+
+    df = df.sort_values(by='Date')
+    
+    print("applying lambdas")
+    df['Full Model Name'] = df['Full Model Name'].apply(lambda x: string_together_amg(x))
+    df['Make-Model'] = df['Full Model Name'].apply(lambda x: partial_match(x, filter_makes_models))
+
+    print(df.head())
+    
+    return df
+
 
 
 @app.callback(
@@ -288,10 +296,9 @@ This method is triggered by these interactions:
     - table is paginated
     
 '''
-
-
 @app.callback(
-    [Output('listings_graph', 'figure'),
+    [Output('horizontal_bar_car_models', 'figure'),
+     Output('listings_graph', 'figure'),
      Output('make_table', 'data'),
      Output('price-slider', 'min'),
      Output('price-slider', 'max'),
@@ -313,17 +320,31 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
         
         print("Querying new makes... make: {}, previous_make: {}".format(make, curr_make))
         
-        param_make = make_dropdown_to_param[make]
+        # converts the uppercase display value of a make to the parameter version
+        # Mercedez Benz -> mercedez_benz 
+        param_make = makes.MAKES_DROPDOWN_TO_PARAMETER_QUERY[make]
+    
+        # fetch the query results
         df = query_make(param_make)
         curr_make = make
-        
-        
 
     if not search_term:
 
         temp_df = df[(df['Price'] <= price_slider_value) & (df['Mileage'] <= mileage_slider_value)]
+        
+        data_bar = pd.DataFrame(temp_df['Make-Model'].value_counts())
+        data_bar = data_bar.rename(columns = {'Make-Model': 'Count'})
+        
+        fig_bar = px.bar(
+                data_bar, 
+                x = 'Count', 
+                y=data_bar.index, 
+                orientation='h')
+        
+        fig_bar.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
+                  marker_line_width=1.5, opacity=0.6)
 
-        fig = px.scatter(
+        fig_scatter = px.scatter(
             temp_df.sort_values(by='Year'),
             x="Mileage",
             y="Price",
@@ -331,7 +352,8 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
             hover_data=["Full Model Name"],
             template='plotly_dark')
 
-        return fig, \
+        return fig_bar, \
+               fig_scatter, \
                temp_df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records'), \
                df['Price'].min(), \
                df['Price'].max(), \
@@ -341,8 +363,14 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
     else:
         
         temp_df = df[(df['Full Model Name'].str.contains(search_term)) & (df['Price'] <= price_slider_value) & (df['Mileage'] <= mileage_slider_value)]
+        
+        data_bar = pd.DataFrame(temp_df['Make-Model'].value_counts())
+        data_bar = data_bar.rename(columns = {'Make-Model': 'Count'})
+        
+        fig_bar = px.bar(data_bar, x = 'Count', y=data_bar.index, orientation='h')
+        
 
-        fig = px.scatter(
+        fig_scatter = px.scatter(
             temp_df.sort_values(by='Year'),
             x="Mileage",
             y="Price",
@@ -350,7 +378,8 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
             hover_data=["Full Model Name"],
             template='plotly_dark')
 
-        return fig, \
+        return fig_bar, \
+               fig_scatter, \
                temp_df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records'), \
                df['Price'].min(), \
                df['Price'].max(), \
