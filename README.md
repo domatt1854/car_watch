@@ -3,7 +3,7 @@
 Car Watch allows you to monitor the new listings on cars.com using RDS, Python, Lambda, and EventBridge.
 
 
-![alt text](data/pipeline_image.png)
+![alt text](images/pipeline_image.png)
 
 ## Installing dependencies
 This code allows you to quickly scrape all available car data on cars.com. Before running this code, run 
