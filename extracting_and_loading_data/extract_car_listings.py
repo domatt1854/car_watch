@@ -10,7 +10,6 @@ import random
 class CarScraper:
 
     def __init__(self):
-        self.ua = []
         self.df = pd.DataFrame()
         self.data_dict = []
         self.number_results = {}
@@ -18,13 +17,7 @@ class CarScraper:
         self.proxies = []
         
 
-    async def get_user_agents(self):
 
-        with open('useragents.txt', 'r') as f:
-            lines = f.readlines()
-
-        for line in lines:
-            self.ua.append(line.strip())
 
     async def get_proxies(self):
     
@@ -52,14 +45,13 @@ class CarScraper:
     async def get_total_results(self, make:str) -> BeautifulSoup:
 
         website = 'https://www.cars.com/shopping/results/?page={}&page_size=100&list_price_max=&makes[]={}&maximum_distance=all&models[]=&stock_type=cpo&zip='.format("1", make)
-        headers = {'User-Agent' : self.ua[random.randint(0,len(self.ua))]}
+        headers = {}
 
 
 
         response = requests.get(
             url = website,
             headers=headers,
-            # proxies=proxy_dict,
             timeout=3,
         )
 
@@ -190,12 +182,7 @@ async def main(make: str):
 
     cs = CarScraper()
 
-    
-    get_ua_task = asyncio.create_task(
-        cs.get_user_agents()
-    )
 
-    await get_ua_task
 
 
 
@@ -211,7 +198,6 @@ async def main(make: str):
     
 
     async with aiohttp.ClientSession() as session:
-        # cs.number_results[make] / 100
 
         num_results = int(cs.number_results[make] / 100)
 

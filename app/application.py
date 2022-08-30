@@ -23,7 +23,7 @@ app = Dash(
     external_stylesheets=[dbc.themes.CYBORG]
 )
 
-server = app.server
+application = app.server
 
 
 app.layout = dbc.Container([

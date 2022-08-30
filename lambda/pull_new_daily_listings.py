@@ -3,13 +3,11 @@ import re
 from bs4 import BeautifulSoup
 import requests
 from os import environ
-from datetime import date
-import boto3
-from boto3.dynamodb.conditions import Key, Attr
+from datetime import date, datetime, timedelta
 from decimal import Decimal
-
-
-
+import boto3
+import json
+from time import sleep
 
 def extract_year(name):
     return int(re.search(r"(\d{4})", name).group(1))
@@ -192,72 +190,157 @@ makes = [
 
 
 
-def lambda_handler(event, context):
-        
-    table_name = "car_listings"
 
+
+def lambda_handler(event, context):
+    
+    new_listings = []
+    
+    table_name = "cars"
+        
     client = boto3.client('dynamodb')
     DB = boto3.resource('dynamodb')
     table = DB.Table(table_name)
+    table_daily_listings = DB.Table("daily_listings")
+    
+    num_listings_uploaded = 0
+    
+    today = datetime.now().date().isoformat()
 
+    
+    print("today: {}".format(today))
 
+        
+    
+    print("finished connecting to resource")
+        
+    
     for make in makes:
-        print("querying from url for make: {}".format(make))
         
+
+        print("processing make :{}".format(make))
+    
         url = 'https://www.cars.com/shopping/results/?page={}&page_size=100&list_price_max=&makes[]={}&maximum_distance=all&models[]=&stock_type=cpo&zip='.format('1', make)
-        
+            
         response_text = fetch(url)
-        print("Done querying. Now looking for duplicates...")
-                
+    
         data_dict = process_text(response_text)
-        
+            
         
         df_append = pd.DataFrame.from_dict(data_dict, orient = 'columns')
         
-        df_append['Year'] = df_append['Year'].astype(int)
-        df_append['Mileage'] = df_append['Mileage'].astype(int)
-        df_append['Price'] = df_append['Price'].astype(float)
-        
-        try:
-            df_append['Rating'] = df_append['Rating'].astype(float)
-        except ValueError:
-            continue
-        
-        df_append['Dealer Name'] = df_append['Dealer Name'].astype(str)
+        df_append['Year'] = df_append['Year'].astype(dtype = int, errors = 'ignore')
+        df_append['Mileage'] = df_append['Mileage'].astype(dtype = int, errors = 'ignore')
+        df_append['Price'] = df_append['Price'].astype(dtype = float, errors = 'ignore')
+        df_append['Rating'] = df_append['Rating'].astype(dtype = float, errors = 'ignore')
         df_append['Make'] = capitalize(make)
+    
+        df_append = df_append.dropna()
         
-
-
+        print("Finished pulling down and processing new listings for {}".format(make))
+        
+        make_listings = 0
+        
         for i, row in df_append.iterrows():
-
-            print(i)
+    
+    
+            query_items = row.to_dict()
+            query_items = json.loads(json.dumps(query_items), parse_float = Decimal)
+    
+            ID = "{}-{}-{}".format(query_items['Name'].replace(' ', ''), int(query_items['Price']), query_items['Mileage'])
+    
             
-            item = {
-                    'Dealer Name': row['Dealer Name'],
-                    'Price': row['Price'],
-                    'Mileage': row['Mileage'],
-                    'Year': row['Year'],
-                    'Name': row['Name']
+            try:
+    
+                response = DB.batch_get_item(
+                RequestItems={
+                    'cars': {
+                        'Keys': [
+                            {
+                            'ID': ID
+                            }
+                        ]
+                    }
                 }
-            
-            response = table.scan(
-                FilterExpression= Attr('Name').eq(row['Name']) and
-                                  Attr('Mileage').eq(row['Mileage']) and
-                                  Attr('Price').eq(Decimal(row['Price']))
             )
+                
+            except Exception as e:
+                print("Encountered an error: {}".format(e))
+                
             
             
+            if len(response['Responses']['cars']) == 0:
+                
+    
+                query_items['Date'] = today
+                query_items['ID'] = ID
+                
+                new_listings.append(query_items)
+                
+                make_listings += 1
+    
+        
+        print(make_listings)
+        sleep(5)
+        
+    print("Uploading all new listings. Have {} records to upload.".format(len(new_listings)))
+
+    
+    num_listings_uploaded = 0
+
+    with table.batch_writer() as batch:
+    
+        i = 0
+    
+        for item in new_listings:
+            
+            if i % 100 == 0:
+                print("uploaded {} records.".format(i))
+            i += 1
+            
+            try:
+                
+                batch.put_item(
+                    Item = item    
+                )
+                
+                num_listings_uploaded += 1
+                
+                
+            except Exception as error:
+                print("Error encountered: {}".format(error))
+                
 
             
-            if 'Item' in response:
-                print(response['Item'])
+    print("Finished uploading {} new records to cars_listings".format(num_listings_uploaded))  
+    
+    new_listings_daily = 0
+    
+    with table_daily_listings.batch_writer() as batch:
+    
+    
+        for item in new_listings:
             
-            else:
-                print('item is already in database')
-                break
+            
+            item['Date-Make'] = "{}-{}".format(today, item['Make'])
+            
+            try:
+                
+                batch.put_item(
+                    Item = item
+                )
+                
+                new_listings_daily += 1
+            
+            except Exception as error:
+                continue
+    
+    print("Finished uploading {} new records to new_listings_daily".format(new_listings_daily)) 
+    
+    return {'StatusCode': 200}
+        
+    
 
 
-            
-lambda_handler('foo', 'bar')  
-            
-
+    
+    
