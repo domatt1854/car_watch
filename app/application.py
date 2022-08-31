@@ -16,6 +16,7 @@ PAGE_SIZE = 14
 # Used for determining when new data needs to be pulled down
 curr_make = ''
 
+previous_car_listing_chosen = ""
 
 app = Dash(
     __name__,
@@ -318,11 +319,19 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
 )
 def listing_selected(active_cell, page_current, page_size, search_value, price, mileage):
     
-    if not active_cell:
+    global previous_car_listing_chosen
+    
+    if not active_cell and not previous_car_listing_chosen:
         return [html.H4('No Car Listing Selected. Select a car listing in the table to get started!')]
-
+    
     filtered_df = filter_df(price, mileage, search_value)
-    row_record = filtered_df.iloc[(page_current * page_size) + active_cell['row']]
+    
+    if not active_cell:
+        row_record = previous_car_listing_chosen
+    else:
+        row_record = filtered_df.iloc[(page_current * page_size) + active_cell['row']]
+        previous_car_listing_chosen = row_record
+        
 
     fig_price = px.histogram(filtered_df, x = 'Price', nbins=8)
     fig_mileage = px.histogram(filtered_df, x = 'Mileage', nbins=8)
