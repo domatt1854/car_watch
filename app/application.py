@@ -1,4 +1,5 @@
 import pandas as pd
+from scipy import stats
 import plotly.express as px  
 import plotly.graph_objects as go
 from dash import Dash, dash_table, dcc, html, Input, Output
@@ -15,8 +16,6 @@ PAGE_SIZE = 14
 # Used for determining when new data needs to be pulled down
 curr_make = ''
 
-# csv containing up-to-date car models to categorize car listings
-df_makes_models = pd.read_csv('data/makes_models.csv')
 
 app = Dash(
     __name__,
@@ -116,7 +115,7 @@ app.layout = dbc.Container([
         dbc.Col(
             [dbc.Label('Most Recent Listings:'),
              dash_table.DataTable(
-                id='make_table',
+                id='make-table',
                 columns=[
                     {"name": i, "id": i} for i in ['Full Model Name', 'Date', 'Price', 'Mileage']
                 ],
@@ -135,15 +134,25 @@ app.layout = dbc.Container([
             )],
             width=6
         )
-    ])
+    ]),
+    # dbc.Row(id='listing-select'),
+    # dbc.Row(
+    #     [dbc.Col(
+    #         id = 'col-price-histplot'
+    #         #dcc.Graph(id='price-histplot', figure={})
+    #     ),
+    #     dbc.Col(
+    #         id = 'col-mileage-histplot'
+    #         #dcc.Graph(id='mileage-histplot', figure={})
+    #     )]
+    # )
+
+    html.Div(id='listing-select')
 
 ])
 
 
-def string_together_amg(name):
-    if name:
-        name = re.sub('Benz AMG', 'Benz-AMG', name)
-    return name
+
 
 
 '''
@@ -187,35 +196,6 @@ def query_make(make):
     # to hold the results of all queries of a particular make
     df = pd.DataFrame()
 
-    # this filter makes it so that there is less computation involved to find the partial matches of each car model
-    filter_makes_models = df_makes_models[df_makes_models['Make']
-                                          == makes.MAKES_DROPDOWN_TO_JOIN_KEY[make]]['Model']
-    filter_makes_models = filter_makes_models.unique().tolist()
-
-    if makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Ram':
-        filter_makes_models.extend(makes.RAM_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Rolls Royce':
-        filter_makes_models.extend(makes.ROLLS_ROYCE_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Aston Martin':
-        filter_makes_models.extend(makes.ASTON_MARTIN_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Nissan':
-        filter_makes_models.extend(makes.NISSAN_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Toyota':
-        filter_makes_models.extend(makes.TOYOTA_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Gmc':
-        filter_makes_models.extend(makes.GMC_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Chevrolet':
-        filter_makes_models.extend(makes.CHEVY_MODELS)
-
-    elif makes.MAKES_DROPDOWN_TO_JOIN_KEY[make] == 'Ford':
-        filter_makes_models.extend(makes.FORD_MODELS)
-
     # Query the most recent listings since last week
     for i in range(NUM_DAYS_IN_WEEK):
 
@@ -237,13 +217,18 @@ def query_make(make):
 
     df = df.sort_values(by='Date')
 
-    # partial match
-    df['Full Model Name'] = df['Full Model Name'].apply(
-        lambda x: string_together_amg(x))
-    df['Make-Model'] = df['Full Model Name'].apply(
-        lambda x: partial_match(x, filter_makes_models))
-
     return df
+
+
+def filter_df(price: int, mileage: int, search_term: str) -> pd.DataFrame:
+
+    if not search_term:
+
+        return df[(df['Price'] <= price) &
+                     (df['Mileage'] <= mileage)]
+
+    return df[(df['Full Model Name'].str.contains(search_term)) & (
+            df['Price'] <= price) & (df['Mileage'] <= mileage)]
 
 
 '''
@@ -253,7 +238,7 @@ This method updates the row of text under the drop-down mneu
     Output('display-value', 'children'),
     [Input('dropdown_make', 'value')]
 )
-def display_value(value):
+def display_selected_make(value):
     return f'You have selected {value}'
 
 
@@ -264,7 +249,7 @@ It handles all figure and data updating
 @app.callback(
     [Output('horizontal_bar_car_models', 'figure'),
      Output('listings_graph', 'figure'),
-     Output('make_table', 'data'),
+     Output('make-table', 'data'),
      Output('price-slider', 'min'),
      Output('price-slider', 'max'),
      Output('mileage-slider', 'min'),
@@ -274,8 +259,8 @@ It handles all figure and data updating
      Input('price-slider', 'value'),
      Input('mileage-slider', 'value'),
      Input('listings_graph', 'figure'),
-     Input('make_table', 'page_current'),
-     Input('make_table', 'page_size')])
+     Input('make-table', 'page_current'),
+     Input('make-table', 'page_size')])
 def update_table(make, search_term, price_slider_value, mileage_slider_value, figure, page_current, page_size):
 
     global curr_make
@@ -292,69 +277,99 @@ def update_table(make, search_term, price_slider_value, mileage_slider_value, fi
         df = query_make(param_make)
         curr_make = make
 
-    # if the search bar is empty
-    if not search_term:
+    temp_df = filter_df(price_slider_value, mileage_slider_value, search_term)
 
-        temp_df = df[(df['Price'] <= price_slider_value) &
-                     (df['Mileage'] <= mileage_slider_value)]
 
-        data_bar = pd.DataFrame(temp_df['Make-Model'].value_counts())
-        data_bar = data_bar.rename(columns={'Make-Model': 'Count'})
-        data_bar.index.names = ['Model']
+    data_bar = pd.DataFrame(temp_df['Full Model Name'].value_counts())
+    data_bar = data_bar.rename(columns={'Full Model Name': 'Count'})
+    data_bar.index.names = ['Model']
 
-        fig_bar = px.bar(data_bar, x='Count',
-                         y=data_bar.index, orientation='h')
+    fig_bar = px.bar(data_bar, x='Count',
+                        y=data_bar.index, orientation='h')
 
-        fig_bar.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
-                              marker_line_width=1.5, opacity=0.6)
+    fig_bar.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
+                            marker_line_width=1.5, opacity=0.6)
 
-        fig_scatter = px.scatter(
-            temp_df.sort_values(by='Year'),
-            x="Mileage",
-            y="Price",
-            color="Year",
-            hover_data=["Full Model Name"],
-            template='plotly_dark')
+    fig_scatter = px.scatter(
+        temp_df.sort_values(by='Year'),
+        x="Mileage",
+        y="Price",
+        color="Year",
+        hover_data=["Full Model Name"],
+        template='plotly_dark')
 
-        return fig_bar, \
-            fig_scatter, \
-            temp_df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records'), \
-            df['Price'].min(), \
-            df['Price'].max(), \
-            df['Mileage'].min(), \
-            df['Mileage'].max()
+    return fig_bar, \
+        fig_scatter, \
+        temp_df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records'), \
+        df['Price'].min(), \
+        df['Price'].max(), \
+        df['Mileage'].min(), \
+        df['Mileage'].max()
 
-    # the user wants to search for a particular model
-    else:
 
-        temp_df = df[(df['Full Model Name'].str.contains(search_term)) & (
-            df['Price'] <= price_slider_value) & (df['Mileage'] <= mileage_slider_value)]
+@app.callback(
+    [Output('listing-select', 'children')],
+    [Input('make-table', 'active_cell'),
+    Input('make-table', 'page_current'),
+    Input('make-table', 'page_size'),
+    Input('filter_search', 'value'),
+    Input('price-slider', 'value'),
+    Input('mileage-slider', 'value')]
+)
+def listing_selected(active_cell, page_current, page_size, search_value, price, mileage):
+    
+    if not active_cell:
+        return [html.H4('No Car Listing Selected. Select a car listing in the table to get started!')]
 
-        data_bar = pd.DataFrame(temp_df['Make-Model'].value_counts())
-        data_bar = data_bar.rename(columns={'Make-Model': 'Count'})
-        data_bar.index.names = ['Model']
+    filtered_df = filter_df(price, mileage, search_value)
+    row_record = filtered_df.iloc[(page_current * page_size) + active_cell['row']]
 
-        fig_bar = px.bar(data_bar, x='Count',
-                         y=data_bar.index, orientation='h')
-        
-        fig_bar.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
-                        marker_line_width=1.5, opacity=0.6)
+    fig_price = px.histogram(filtered_df, x = 'Price', nbins=8)
+    fig_mileage = px.histogram(filtered_df, x = 'Mileage', nbins=8)
 
-        fig_scatter = px.scatter(
-            temp_df.sort_values(by='Year'),
-            x="Mileage",
-            y="Price",
-            color="Year",
-            hover_data=["Full Model Name"],
-            template='plotly_dark')
+    fig_price.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
+                            marker_line_width=1.5, opacity=0.6)
+    
+    fig_mileage.update_traces(marker_color='rgb(158,202,225)', marker_line_color='rgb(8,48,107)',
+                            marker_line_width=1.5, opacity=0.6)
 
-        return fig_bar, \
-            fig_scatter, \
-            temp_df.iloc[page_current * page_size: (page_current + 1) * page_size].to_dict('records'), \
-            df['Price'].min(), \
-            df['Price'].max(), \
-            df['Mileage'].min(), \
-            df['Mileage'].max()
+    fig_price.add_vline(x = row_record['Price'], line_dash = 'dash', line_color = 'firebrick')
+    fig_mileage.add_vline(x = row_record['Mileage'], line_dash = 'dash', line_color = 'firebrick')
+    
+    
+    percentile_price = stats.percentileofscore(
+        filtered_df['Price'],
+        row_record['Price'],
+        kind = 'weak'
+    )
+
+    percentile_mileage = stats.percentileofscore(
+        filtered_df['Mileage'],
+        row_record['Mileage'],
+        kind = 'weak'
+    )
+
+
+    return [dbc.Row(
+        [dbc.Row(
+            [html.H4('Selected Car Listing: {}'.format(row_record['Full Model Name'])),
+            html.H5('This listing is more expensive than {:.2f}% of listings and has more mileage than {:.2f}% of recent listings'.format(percentile_price, percentile_mileage))]
+        ),
+        dbc.Row(
+            [
+                dbc.Col(dcc.Graph(figure = fig_price), width = 6),
+                dbc.Col(dcc.Graph(figure = fig_mileage), width = 6)
+            ]
+        )
+        ]
+    )]
+
+
+
+def string_together_amg(name):
+    if name:
+        name = re.sub('Benz AMG', 'Benz-AMG', name)
+    return name
 
 
 if __name__ == '__main__':
